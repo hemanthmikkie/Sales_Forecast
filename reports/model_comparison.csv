@@ -1,0 +1,6 @@
+Model Name,MAE,RMSE,MAPE (%)
+XGBoost Regressor,7.95,11.53,10.72
+Random Forest Regressor,8.51,12.58,11.4
+Linear Regression,10.35,14.24,15.77
+Moving Average (7-Day),17.54,25.6,22.87
+Naive Forecast (Lag-1),21.17,32.29,27.21
