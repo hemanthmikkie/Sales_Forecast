@@ -1,7 +1,7 @@
 """
 Module 11: Database Engine & Session Management
-Provides SQLAlchemy session factory with PostgreSQL connection support,
-configurable connection pooling, and resilient local fallback.
+Provides SQLAlchemy session factory supporting MySQL and PostgreSQL
+with connection pooling, pre-ping liveness, and resilient local fallback.
 """
 
 import os
@@ -10,56 +10,59 @@ from typing import Generator
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.exc import OperationalError
 
 load_dotenv()
 
-# Read database URL from environment
-POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "sales_forecast")
+# Read database parameters from environment
+DB_USER = os.getenv("DB_USER", os.getenv("POSTGRES_USER", "root"))
+DB_PASSWORD = os.getenv("DB_PASSWORD", os.getenv("POSTGRES_PASSWORD", "minnie"))
+DB_HOST = os.getenv("DB_HOST", os.getenv("POSTGRES_HOST", "localhost"))
+DB_PORT = os.getenv("DB_PORT", "3306")
+DB_NAME = os.getenv("DB_NAME", os.getenv("POSTGRES_DB", "sales_forecast"))
 
-DEFAULT_PG_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_PG_URL)
+# Default to MySQL (active on user system) or PostgreSQL / SQLite fallback
+DEFAULT_MYSQL_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_MYSQL_URL)
 
 Base = declarative_base()
 
+
 def get_engine():
     """
-    Attempts to initialize PostgreSQL engine. If PostgreSQL is unreachable
-    in the active environment, falls back to local SQLite to ensure test and
-    development autonomy.
+    Attempts to initialize production engine (MySQL / PostgreSQL).
+    Falls back gracefully to SQLite if the database server is unreachable.
     """
+    # 1. Try primary configured DATABASE_URL (MySQL or PostgreSQL)
     try:
-        if DATABASE_URL.startswith("postgresql"):
-            pg_engine = create_engine(
+        if DATABASE_URL.startswith("mysql") or DATABASE_URL.startswith("postgresql"):
+            target_engine = create_engine(
                 DATABASE_URL,
                 pool_pre_ping=True,
                 pool_size=10,
                 max_overflow=20,
-                connect_args={"connect_timeout": 3}
+                connect_args={"connect_timeout": 3} if "mysql" in DATABASE_URL or "postgresql" in DATABASE_URL else {}
             )
-            # Test connection
-            with pg_engine.connect() as conn:
+            with target_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            print("[Database] Successfully connected to PostgreSQL instance.")
-            return pg_engine
+            db_type = "MySQL" if "mysql" in DATABASE_URL else "PostgreSQL"
+            print(f"[Database] Successfully connected to {db_type} database ('{DB_NAME}').")
+            return target_engine
     except Exception as ex:
-        print(f"[Database] PostgreSQL connection failed ({ex}). Switching to SQLite fallback for autonomous local runtime.")
-    
-    # Fallback SQLite engine
+        print(f"[Database] Primary database connection failed ({ex}).")
+
+    # 2. Resilient SQLite fallback
     sqlite_url = "sqlite:///./sales_forecast.db"
     sqlite_engine = create_engine(
         sqlite_url,
         connect_args={"check_same_thread": False}
     )
-    print(f"[Database] Active database: SQLite at '{sqlite_url}'")
+    print(f"[Database] Fallback active: SQLite at '{sqlite_url}'")
     return sqlite_engine
+
 
 engine = get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def get_db() -> Generator:
     """FastAPI Dependency for database session lifecycle."""
