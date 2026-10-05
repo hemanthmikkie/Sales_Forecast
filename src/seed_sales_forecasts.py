@@ -13,7 +13,7 @@ Run from project root:
 import random
 import sys
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 # ── project root on path ──────────────────────────────────────────────────────
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -171,7 +171,7 @@ def main():
                     forecast_demand=fc_demand,
                     risk_level=r_level,
                     reorder_quantity=r_qty,
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                 )
                 db.add(risk)
                 risks_added += 1

@@ -151,3 +151,34 @@ def test_post_reorder_replenishment():
         assert data["status"] == "CONFIRMED"
         assert data["reorder_quantity"] == 75
         assert data["new_inventory"] == data["previous_inventory"] + 75
+
+
+def test_get_products():
+    """Verifies GET /products returns all catalog products."""
+    with TestClient(app) as test_client:
+        response = test_client.get("/products")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        assert "product_id" in data[0]
+        assert "product_name" in data[0]
+        assert "category" in data[0]
+        assert "unit_price" in data[0]
+
+
+def test_get_product_by_id():
+    """Verifies GET /products/{product_id} returns correct product."""
+    with TestClient(app) as test_client:
+        response = test_client.get("/products/P101")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["product_id"] == "P101"
+        assert data["category"] == "Electronics"
+
+
+def test_get_product_not_found():
+    """Verifies GET /products/{product_id} returns 404 for unknown ID."""
+    with TestClient(app) as test_client:
+        response = test_client.get("/products/P9999_INVALID")
+        assert response.status_code == 404

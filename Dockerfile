@@ -9,10 +9,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (compiler and postgresql dev libraries)
+# Install system dependencies (compiler tools + MySQL client headers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libpq-dev \
+    default-libmysqlclient-dev \
+    pkg-config \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -21,19 +22,21 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# Copy project source files
 COPY src/ ./src/
 COPY api/ ./api/
 COPY database/ ./database/
 COPY models/ ./models/
 COPY dataset/ ./dataset/
 COPY reports/ ./reports/
+COPY sql/ ./sql/
+COPY .env.example ./.env.example
 
-# Expose port
+# Expose FastAPI port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+# Health check via /health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Start Uvicorn web server

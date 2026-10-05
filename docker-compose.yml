@@ -1,27 +1,28 @@
 version: "3.8"
 
 services:
-  # PostgreSQL Database Service
-  postgres_db:
-    image: postgres:16-alpine
-    container_name: sales_forecast_postgres
+  # ── MySQL Database Service (matches local dev config) ──────────────────────
+  mysql_db:
+    image: mysql:8.0
+    container_name: sales_forecast_mysql
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-sales_forecast}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-minnie}
+      MYSQL_DATABASE: ${DB_NAME:-sales_forecast}
+      MYSQL_USER: ${DB_USER:-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-minnie}
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./sql/schema.sql:/docker-entrypoint-initdb.d/init.sql
+      - mysql_data:/var/lib/mysql
+      - ./sql/schema_mysql.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sales_forecast}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${DB_PASSWORD:-minnie}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # FastAPI Web Application & ML Engine
+  # ── FastAPI Web Application & ML Engine ────────────────────────────────────
   api_service:
     build:
       context: .
@@ -29,18 +30,23 @@ services:
     container_name: sales_forecast_api
     restart: always
     depends_on:
-      postgres_db:
+      mysql_db:
         condition: service_healthy
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_HOST: postgres_db
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-sales_forecast}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres_db:5432/${POSTGRES_DB:-sales_forecast}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-minnie}
+      DB_HOST: mysql_db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-sales_forecast}
+      DATABASE_URL: mysql+pymysql://${DB_USER:-root}:${DB_PASSWORD:-minnie}@mysql_db:3306/${DB_NAME:-sales_forecast}
       APP_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 8000
+      DEBUG: "false"
+      DEFAULT_LEAD_TIME_DAYS: 1
+      DEFAULT_SAFETY_STOCK_RATIO: 0.20
+      STOCKOUT_THRESHOLD_RATIO: 0.75
+      OVERSTOCK_THRESHOLD_MULTIPLIER: 2.0
     ports:
       - "8000:8000"
     volumes:
@@ -48,5 +54,5 @@ services:
       - ./reports:/app/reports
 
 volumes:
-  postgres_data:
+  mysql_data:
     driver: local

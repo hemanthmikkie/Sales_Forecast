@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
     print("[Startup] Initializing database tables...")
     Base.metadata.create_all(bind=engine)
 
-    print("[Startup] Seeding initial master data if necessary...")
+    print("[Startup] Checking master data (seeding only if products table is empty)...")
     db = SessionLocal()
     try:
         seed_master_data(db)
@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 
     print("[Startup] Loading ML demand forecasting artifacts...")
     load_ml_models()
-    print("[Startup] Application initialization complete.")
+    print("[Startup] Application ready — visit http://localhost:8000/docs")
     yield
     print("[Shutdown] Cleaning up resources...")
 

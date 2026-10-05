@@ -9,7 +9,7 @@ Implements REST endpoints:
   - GET  /forecast/{product_id}
   - GET  /inventory-risk/{product_id}
   - POST /reorder
-Integrates PostgreSQL database operations with the loaded ML demand forecasting model
+Integrates MySQL database operations with the loaded ML demand forecasting model
 and the inventory risk engine.
 """
 
@@ -27,6 +27,7 @@ from database.database import get_db
 from database import crud, models
 from api.schemas import (
     HealthResponse,
+    ProductResponse,
     SaleCreateRequest,
     SaleResponse,
     InventoryResponse,
@@ -98,6 +99,27 @@ def health_check(db: Session = Depends(get_db)):
 
 
 # -----------------------------------------------------------------------------
+# 1b. GET /products
+# -----------------------------------------------------------------------------
+@router.get("/products", response_model=List[ProductResponse], tags=["Products"])
+def list_products(db: Session = Depends(get_db)):
+    """Returns the full product catalog with IDs, names, categories, and prices."""
+    return crud.get_products(db)
+
+
+@router.get("/products/{product_id}", response_model=ProductResponse, tags=["Products"])
+def get_product(product_id: str, db: Session = Depends(get_db)):
+    """Returns a single product's details by Product ID (e.g. P101)."""
+    product = crud.get_product(db, product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Product '{product_id}' not found in catalog.",
+        )
+    return product
+
+
+# -----------------------------------------------------------------------------
 # 2. GET /sales & POST /sales
 # -----------------------------------------------------------------------------
 @router.get("/sales", response_model=List[SaleResponse], tags=["Sales Management"])
@@ -157,7 +179,7 @@ def list_inventory(
 def generate_forecast(payload: ForecastRequest, db: Session = Depends(get_db)):
     """
     Generates real-time demand forecast for a product and store on a target future date
-    using the trained Machine Learning model. Persists forecast audit in PostgreSQL.
+    using the trained Machine Learning model. Persists forecast audit in MySQL.
     """
     if ML_ARTIFACTS["model"] is None or ML_ARTIFACTS["preprocessor"] is None:
         load_ml_models()
