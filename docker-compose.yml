@@ -1,23 +1,24 @@
 version: "3.8"
 
 services:
-  # ── MySQL Database Service (matches local dev config) ──────────────────────
+  # ── MySQL Database Service ─────────────────────────────────────────────────
+  # Credentials are loaded from .env file — never hardcoded here
   mysql_db:
     image: mysql:8.0
     container_name: sales_forecast_mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-minnie}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME:-sales_forecast}
       MYSQL_USER: ${DB_USER:-root}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-minnie}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./sql/schema_mysql.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${DB_PASSWORD:-minnie}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USER:-root}", "--password=${DB_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,11 +35,11 @@ services:
         condition: service_healthy
     environment:
       DB_USER: ${DB_USER:-root}
-      DB_PASSWORD: ${DB_PASSWORD:-minnie}
+      DB_PASSWORD: ${DB_PASSWORD}
       DB_HOST: mysql_db
       DB_PORT: 3306
       DB_NAME: ${DB_NAME:-sales_forecast}
-      DATABASE_URL: mysql+pymysql://${DB_USER:-root}:${DB_PASSWORD:-minnie}@mysql_db:3306/${DB_NAME:-sales_forecast}
+      DATABASE_URL: mysql+pymysql://${DB_USER:-root}:${DB_PASSWORD}@mysql_db:3306/${DB_NAME:-sales_forecast}
       APP_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 8000

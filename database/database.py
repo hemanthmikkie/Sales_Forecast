@@ -13,12 +13,12 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 load_dotenv()
 
-# Read database parameters from environment
-DB_USER = os.getenv("DB_USER", os.getenv("POSTGRES_USER", "root"))
-DB_PASSWORD = os.getenv("DB_PASSWORD", os.getenv("POSTGRES_PASSWORD", "minnie"))
-DB_HOST = os.getenv("DB_HOST", os.getenv("POSTGRES_HOST", "localhost"))
-DB_PORT = os.getenv("DB_PORT", "3306")
-DB_NAME = os.getenv("DB_NAME", os.getenv("POSTGRES_DB", "sales_forecast"))
+# Read database parameters from environment (.env file — never hardcode credentials)
+DB_USER     = os.getenv("DB_USER",     os.getenv("POSTGRES_USER",     "root"))
+DB_PASSWORD = os.getenv("DB_PASSWORD", os.getenv("POSTGRES_PASSWORD", ""))
+DB_HOST     = os.getenv("DB_HOST",     os.getenv("POSTGRES_HOST",     "localhost"))
+DB_PORT     = os.getenv("DB_PORT",     "3306")
+DB_NAME     = os.getenv("DB_NAME",     os.getenv("POSTGRES_DB",       "sales_forecast"))
 
 # Default to MySQL (active on user system) or PostgreSQL / SQLite fallback
 DEFAULT_MYSQL_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
@@ -48,7 +48,7 @@ def get_engine():
             print(f"[Database] Successfully connected to {db_type} database ('{DB_NAME}').")
             return target_engine
     except Exception as ex:
-        print(f"[Database] Primary database connection failed ({ex}).")
+        print(f"[Database] Primary database connection failed ({type(ex).__name__}).")
 
     # 2. Resilient SQLite fallback
     sqlite_url = "sqlite:///./sales_forecast.db"

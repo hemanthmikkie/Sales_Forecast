@@ -146,14 +146,12 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and set your MySQL credentials:
+Edit your local, git-ignored `.env` file and set your MySQL credentials there. Never put real credentials in this README or commit them.
 ```env
 DB_USER=root
-DB_PASSWORD=minnie
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=sales_forecast
-DATABASE_URL=mysql+pymysql://root:minnie@localhost:3306/sales_forecast
 ```
 
 ---
