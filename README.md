@@ -2,7 +2,7 @@
 
 An end-to-end, production-grade Machine Learning and MLOps system that analyzes multi-store historical sales data, forecasts future product demand, assesses inventory risk (stock-out vs overstock), and automatically calculates optimal reorder quantities.
 
-Built using **Python 3.12**, **Scikit-learn**, **XGBoost**, **FastAPI**, **PostgreSQL**, **SQLAlchemy**, **Pytest**, and **Docker**.
+Built using **Python 3.12**, **Scikit-learn**, **XGBoost**, **FastAPI**, **MySQL 8.0**, **SQLAlchemy**, **Pytest**, and **Docker**.
 
 ---
 
@@ -17,7 +17,7 @@ This system bridges the gap between **predictive machine learning** and **invent
 - Dynamically estimates safety stock buffers based on lead times and promotional velocity.
 - Evaluates active stock positions in real-time, categorizing risk as `Stock-Out Risk`, `Normal Stock`, or `Overstock Risk`.
 - Calculates exact mathematical replenishment quantities ($Q = \max(\text{Required Stock} - \text{Current Inventory}, 0)$).
-- Exposes full CRUD and prediction capabilities through a RESTful FastAPI service connected to PostgreSQL.
+- Exposes full CRUD and prediction capabilities through a RESTful FastAPI service connected to MySQL.
 
 ---
 
@@ -33,7 +33,7 @@ flowchart TD
     F --> G["Module 6: Metric Evaluation\n(MAE, RMSE, MAPE Leaderboard)"]
     G --> H["Module 13: Model Serialization\n(Joblib: demand_model.pkl & preprocessor.pkl)"]
     H --> I["Module 10 & 12: FastAPI REST Service"]
-    J["Module 11: PostgreSQL Database\n(Products, Sales, Inventory, Forecasts, Risks)"] <--> I
+    J["Module 11: MySQL Database\n(Products, Sales, Inventory, Forecasts, Risks)"] <--> I
     I --> K["Module 8 & 9: Inventory Optimization Engine\n(Safety Stock & Stock-Out/Overstock Risk)"]
     K --> L["Business Decision Output\n(Forecast Demand, Risk Level, Reorder Qty)"]
 ```
@@ -43,7 +43,7 @@ flowchart TD
 ## 📂 Project Directory Structure
 
 ```text
-Sales_Demand_Forecasting/
+Sales_Forecast/
 ├── dataset/
 │   ├── raw/
 │   │   └── sales_data.csv             # Raw retail transaction telemetry (45,615 rows)
@@ -65,7 +65,9 @@ Sales_Demand_Forecasting/
 │   ├── forecasting.py                 # Module 5: 5 model architectures & pipelines
 │   ├── evaluation.py                  # Module 6: MAE/RMSE/MAPE & leaderboard
 │   ├── inventory.py                   # Module 8 & 9: Optimization & risk engine
-│   └── create_notebooks.py            # Automated notebook generation utility
+│   ├── generate_dataset.py            # Synthetic dataset generator
+│   ├── seed_50_items.py               # Seeds 50 products + 250 inventory positions
+│   └── seed_sales_forecasts.py        # Seeds 1250 sales + 250 forecasts + 250 risks
 ├── models/
 │   ├── demand_model.pkl               # Serialized best ML model (XGBoost Regressor)
 │   └── preprocessor.pkl               # Serialized Scikit-learn ColumnTransformer
@@ -76,11 +78,12 @@ Sales_Demand_Forecasting/
 │   └── routes.py                      # REST endpoints & ML/DB integration
 ├── database/
 │   ├── __init__.py
-│   ├── database.py                    # SQLAlchemy session engine (PG + SQLite fallback)
+│   ├── database.py                    # SQLAlchemy session engine (MySQL + SQLite fallback)
 │   ├── models.py                      # SQLAlchemy ORM database models
 │   └── crud.py                        # Database CRUD repository layer
 ├── sql/
-│   ├── schema.sql                     # PostgreSQL DDL script with indexes
+│   ├── schema.sql                     # PostgreSQL DDL script (reference)
+│   ├── schema_mysql.sql               # MySQL 8.0 DDL script with indexes
 │   └── analysis.sql                   # Real-world business analytical queries
 ├── tests/
 │   ├── __init__.py
@@ -102,251 +105,505 @@ Sales_Demand_Forecasting/
 ├── .env.example                       # Environment configuration template
 ├── .gitignore                         # Standard git ignore definitions
 ├── Dockerfile                         # Production container image specification
-├── docker-compose.yml                 # Multi-container orchestration (API + PostgreSQL)
+├── docker-compose.yml                 # Multi-container orchestration (API + MySQL)
 └── README.md                          # Comprehensive documentation & guide
 ```
 
 ---
 
-## 🧩 Deep Dive: Module by Module (Beginner-Friendly Explanation)
+## 🚀 COMPLETE RUN COMMANDS — Step by Step
+
+> Run every command from the **project root** directory:
+> `c:\10k\data science projects\Sales_Forecast`
+
+---
+
+### ⚙️ STEP 0 — Clone & Setup
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/hemanthmikkie/Sales_Forecast.git
+
+# 2. Open the project folder
+cd Sales_Forecast
+
+# 3. Create a virtual environment
+python -m venv venv
+
+# 4. Activate virtual environment (Windows)
+venv\Scripts\activate
+
+# 4. Activate virtual environment (Linux / macOS)
+source venv/bin/activate
+
+# 5. Upgrade pip
+pip install --upgrade pip
+
+# 6. Install all required packages
+pip install -r requirements.txt
+
+# 7. Copy environment config template
+cp .env.example .env
+```
+
+Edit `.env` and set your MySQL credentials:
+```env
+DB_USER=root
+DB_PASSWORD=minnie
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=sales_forecast
+DATABASE_URL=mysql+pymysql://root:minnie@localhost:3306/sales_forecast
+```
+
+---
+
+### 📊 STEP 1 — Generate Dataset
+
+```bash
+# Generate 45,615 realistic retail sales records
+python src/generate_dataset.py
+```
+
+Expected output:
+```
+[Dataset] Generated 45615 records saved to dataset/raw/sales_data.csv
+```
+
+---
+
+### 🧹 STEP 2 — Load & Inspect Data (Module 1)
+
+```bash
+# Load raw data and display structural audit
+python src/data_loader.py
+```
+
+Expected output:
+```
+[DataLoader] Successfully loaded 45,615 records from 'dataset/raw/sales_data.csv'
+Dataset Shape: 45,615 rows x 11 columns
+Duplicate Records: 15
+```
+
+---
+
+### 🔧 STEP 3 — Clean Data (Module 2)
+
+```bash
+# Run full data cleaning pipeline
+python src/data_cleaning.py
+```
+
+Expected output:
+```
+[DataCleaner] Cleaned dataset saved separately at: 'dataset/processed/cleaned_sales.csv'
+Initial Records: 45,615
+Cleaned Records: 45,600
+```
+
+---
+
+### 📉 STEP 4 — Exploratory Data Analysis (Module 3)
+
+```bash
+# Generate all EDA charts into reports/figures/
+python src/eda.py
+```
+
+Expected output:
+```
+[EDA] Saved: reports/figures/01_temporal_sales_trends.png
+[EDA] Saved: reports/figures/02_category_sales_analysis.png
+[EDA] Saved: reports/figures/03_store_region_analysis.png
+[EDA] Saved: reports/figures/04_promotion_holiday_impact.png
+[EDA] Saved: reports/figures/05_top_low_products.png
+```
+
+---
+
+### ⚡ STEP 5 — Feature Engineering (Module 4)
+
+```bash
+# Run feature engineering standalone check
+python src/feature_engineering.py
+```
+
+Expected output:
+```
+Feature Engineered DataFrame shape: (45600, 27)
+Columns: ['Store_ID', 'Product_ID', ..., 'Rolling_Mean_30']
+```
+
+---
+
+### 🤖 STEP 6 — Train Models & Evaluate (Module 5 & 6)
+
+```bash
+# Train all 5 models, generate leaderboard, save best model
+python src/evaluation.py
+```
+
+Expected output:
+```
+[Forecaster] Chronological split at date: 2025-12-30
+  Train set: 36,442 rows
+  Test set:   9,148 rows
+[Forecaster] Training Linear Regression...
+[Forecaster] Training Random Forest Regressor (n_estimators=100)...
+[Forecaster] Training XGBoost Regressor...
+
+============================================================
+ MODEL PERFORMANCE LEADERBOARD (Empirical Validation)
+============================================================
+              Model Name    MAE    RMSE  MAPE (%)
+           XGBoost Regressor   7.95   11.53     10.72   ← WINNER
+    Random Forest Regressor   8.51   12.58     11.40
+          Linear Regression  10.35   14.24     15.77
+    Moving Average (7-Day)   17.54   25.60     22.87
+   Naive Forecast (Lag-1)    21.17   32.29     27.21
+============================================================
+
+SELECTED MODEL: XGBoost Regressor
+[Evaluator] Comparison table saved to 'reports/model_comparison.csv'
+[Forecaster] Best model 'XGBoost Regressor' saved to 'models/demand_model.pkl'
+[Forecaster] Preprocessor saved to 'models/preprocessor.pkl'
+```
+
+---
+
+### 🗄️ STEP 7 — Setup MySQL Database (Module 11)
+
+Make sure MySQL 8.0 is running, then:
+
+```bash
+# Option A: Let SQLAlchemy auto-create tables on first API start (recommended)
+# Tables are created automatically when the FastAPI app starts
+
+# Option B: Run MySQL DDL script manually
+mysql -u root -p sales_forecast < sql/schema_mysql.sql
+```
+
+---
+
+### 🌱 STEP 8 — Seed MySQL with Sample Data
+
+```bash
+# Seed 50 products + 250 inventory positions (50 products × 5 stores)
+python src/seed_50_items.py
+```
+
+Expected output:
+```
+[Database] Successfully connected to MySQL database ('sales_forecast').
+Products: 40 newly inserted, 10 updated/verified.
+Inventory: Seeded/Updated 250 stock positions across stores S01-S05.
+Total Products in Database:  50
+Total Inventory Records:    250
+Successfully seeded 50 products and inventory into MySQL!
+```
+
+```bash
+# Seed 1250 sales + 250 forecasts + 250 inventory risk records
+python src/seed_sales_forecasts.py
+```
+
+Expected output:
+```
+[1/3] Inserting Sales records ...
+    -> 1250 sale records staged.
+[2/3] Inserting Forecast records ...
+    -> 250 forecast records staged.
+[3/3] Inserting Inventory Risk records ...
+    -> 250 inventory risk records staged.
+
+DATABASE VERIFICATION:
+  - Total Products in Database:  50
+  - Total Inventory Records:    250
+  - Total Sales Records:       1250+
+  - Total Forecast Records:     250+
+  - Total Risk Records:         250+
+Successfully seeded Sales, Forecasts & Inventory Risks!
+```
+
+---
+
+### 🧪 STEP 9 — Run All Tests (Module 14)
+
+```bash
+# Run full pytest test suite with verbose output
+python -m pytest tests/ -v
+```
+
+Expected output:
+```
+============================= test session starts =============================
+collected 25 items
+
+tests/test_api.py::test_get_health                         PASSED  [  4%]
+tests/test_api.py::test_get_sales                          PASSED  [  8%]
+tests/test_api.py::test_post_sales_valid                   PASSED  [ 12%]
+tests/test_api.py::test_post_sales_invalid_product         PASSED  [ 16%]
+tests/test_api.py::test_post_sales_invalid_negative_units  PASSED  [ 20%]
+tests/test_api.py::test_get_inventory                      PASSED  [ 24%]
+tests/test_api.py::test_post_forecast_ml_prediction        PASSED  [ 28%]
+tests/test_api.py::test_get_forecast_by_product            PASSED  [ 32%]
+tests/test_api.py::test_get_inventory_risk_evaluation      PASSED  [ 36%]
+tests/test_api.py::test_post_reorder_replenishment         PASSED  [ 40%]
+tests/test_api.py::test_get_products                       PASSED  [ 44%]
+tests/test_api.py::test_get_product_by_id                  PASSED  [ 48%]
+tests/test_api.py::test_get_product_not_found              PASSED  [ 52%]
+tests/test_data.py::test_data_loader_inspection            PASSED  [ 56%]
+tests/test_data.py::test_data_cleaning_pipeline            PASSED  [ 60%]
+tests/test_data.py::test_data_loader_missing_file_error    PASSED  [ 64%]
+tests/test_forecasting.py::test_feature_engineering_calculations PASSED  [ 68%]
+tests/test_forecasting.py::test_chronological_split        PASSED  [ 72%]
+tests/test_forecasting.py::test_model_evaluator_metrics    PASSED  [ 76%]
+tests/test_forecasting.py::test_inference_feature_extractor PASSED  [ 80%]
+tests/test_inventory.py::test_safety_stock_calculation     PASSED  [ 84%]
+tests/test_inventory.py::test_reorder_quantity_deficit     PASSED  [ 88%]
+tests/test_inventory.py::test_reorder_quantity_zero_when_sufficient PASSED  [ 92%]
+tests/test_inventory.py::test_overstock_risk_detection     PASSED  [ 96%]
+tests/test_inventory.py::test_negative_input_validation    PASSED  [100%]
+
+========================= 25 passed in ~10s ==========================
+```
+
+---
+
+### 🌐 STEP 10 — Start FastAPI Server (Module 10 & 12)
+
+```bash
+# Start the FastAPI application with hot-reload
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Expected startup output:
+```
+[Database] Successfully connected to MySQL database ('sales_forecast').
+[Startup] Initializing database tables...
+[Startup] Checking master data (seeding only if products table is empty)...
+[Startup] Loading ML demand forecasting artifacts...
+[API] Loaded ML model 'XGBoost Regressor' successfully.
+[Startup] Application ready — visit http://localhost:8000/docs
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+Open in browser: **http://localhost:8000/docs**
+
+---
+
+### 🔌 STEP 11 — Test API Endpoints (curl examples)
+
+```bash
+# 1. Health check — verify API, DB, and model are live
+curl -X GET "http://localhost:8000/health"
+
+# 2. List all products in catalog
+curl -X GET "http://localhost:8000/products"
+
+# 3. Get a single product
+curl -X GET "http://localhost:8000/products/P101"
+
+# 4. List sales records (latest 5)
+curl -X GET "http://localhost:8000/sales?limit=5"
+
+# 5. Record a new sale
+curl -X POST "http://localhost:8000/sales" \
+     -H "Content-Type: application/json" \
+     -d '{"date":"2026-10-05","store_id":"S01","product_id":"P101","units_sold":45,"discount":10.0,"promotion":1}'
+
+# 6. View current inventory (all stores)
+curl -X GET "http://localhost:8000/inventory"
+
+# 7. View inventory for one store
+curl -X GET "http://localhost:8000/inventory?store_id=S01"
+
+# 8. Generate ML demand forecast
+curl -X POST "http://localhost:8000/forecast" \
+     -H "Content-Type: application/json" \
+     -d '{"product_id":"P102","store_id":"S01","forecast_date":"2026-11-01","unit_price":89.5,"discount":15.0,"promotion":1,"holiday":0,"lag_1":52.0,"rolling_mean_7":58.5}'
+
+# 9. Get forecast history for a product
+curl -X GET "http://localhost:8000/forecast/P102?store_id=S01"
+
+# 10. Evaluate inventory risk
+curl -X GET "http://localhost:8000/inventory-risk/P101?store_id=S01&lead_time_days=2"
+
+# 11. Place a reorder
+curl -X POST "http://localhost:8000/reorder" \
+     -H "Content-Type: application/json" \
+     -d '{"product_id":"P101","store_id":"S01","reorder_quantity":150,"supplier_notes":"Weekend stock replenishment"}'
+```
+
+---
+
+### 🐳 STEP 12 — Run with Docker (Module 15)
+
+```bash
+# Build and start both MySQL + FastAPI containers
+docker compose up --build
+
+# Run in background (detached mode)
+docker compose up --build -d
+
+# View container logs
+docker compose logs -f
+
+# View only API logs
+docker compose logs -f api_service
+
+# Stop all containers
+docker compose down
+
+# Stop and remove all volumes (wipes DB data)
+docker compose down -v
+```
+
+After Docker starts:
+- **API Swagger UI**: http://localhost:8000/docs
+- **MySQL port**: 3306
+
+---
+
+### 📊 STEP 13 — Verify MySQL Data Directly
+
+```bash
+# Quick Python database check
+python -c "
+from database.database import SessionLocal
+from database.models import Product, Inventory, Sale, Forecast, InventoryRisk
+db = SessionLocal()
+print('Products       :', db.query(Product).count())
+print('Inventory rows :', db.query(Inventory).count())
+print('Sales          :', db.query(Sale).count())
+print('Forecasts      :', db.query(Forecast).count())
+print('Inventory Risks:', db.query(InventoryRisk).count())
+db.close()
+"
+```
+
+Expected output:
+```
+Products       : 50
+Inventory rows : 250
+Sales          : 1250+
+Forecasts      : 250+
+Inventory Risks: 250+
+```
+
+---
+
+### 🔄 STEP 14 — Git Commands
+
+```bash
+# Check project status
+git status
+
+# View commit history
+git log --oneline
+
+# Pull latest changes
+git pull origin main
+
+# Push your changes
+git add -A
+git commit -m "your message here"
+git push origin main
+```
+
+---
+
+## 🧩 Module-by-Module Summary
 
 ### Module 1 — Data Loading (`src/data_loader.py`)
-- **What it does**: Ingests raw CSV telemetry using Pandas, computes dimension shapes, maps column data types, audits null value frequencies across features, tallies duplicate records, and generates 5-point numerical distribution summaries.
-- **Why it matters**: In enterprise machine learning, silent data corruption is the #1 failure mode. Auditing input schemas before processing guarantees pipeline robustness.
+- Loads raw CSV, audits shapes, dtypes, null values, duplicates, and statistics.
 
 ### Module 2 — Data Cleaning (`src/data_cleaning.py`)
-- **What it does**: 
-  - Removes 15 duplicate rows.
-  - Imputes missing `Discount` values with `0.0`.
-  - Imputes missing `Unit_Price` with the median price for that specific `Product_ID`.
-  - Imputes missing `Inventory_Level` with the median stock for that `(Store_ID, Product_ID)`.
-  - Removes impossible negative sales records (`Units_Sold < 0`) and negative prices (`Unit_Price <= 0`).
-  - Detects statistical anomalies using the $3 \times \text{IQR}$ rule without destroying legitimate holiday demand spikes.
-  - Saves the sanitized dataset separately to `dataset/processed/cleaned_sales.csv`.
+- Removes duplicates, imputes missing values, validates domains, detects outliers (3×IQR).
+- Saves cleaned data to `dataset/processed/cleaned_sales.csv`.
 
 ### Module 3 — Exploratory Data Analysis (`src/eda.py`)
 - **Key Findings**:
-  - **Weekly Seasonality**: Saturday/Sunday sales increase by ~35% over midweek averages.
-  - **Promotional Elasticity**: Promotional campaigns yield a **+60.13% sales surge**.
-  - **Holiday Uplift**: Statutory holidays generate a **+62.57% demand lift**.
-  - **Store Footprint**: Store S04 (West) and S01 (North) lead overall demand volume.
-  - Generates 6 publication-ready figures in `reports/figures/`.
+  - Weekend sales surge: **+35%** over midweek.
+  - Promotional uplift: **+60.13%** demand boost.
+  - Holiday uplift: **+62.57%** demand boost.
+  - Generates 6 charts saved to `reports/figures/`.
 
 ### Module 4 — Feature Engineering (`src/feature_engineering.py`)
-- **Calendar Signals**: Extracts `Day`, `Month`, `Year`, `Week`, `Quarter`, `Day_of_Week`, `Is_Weekend`.
-- **Revenue Calculation**:
+- **Revenue**:
   $$\text{Revenue} = \text{Units\_Sold} \times \text{Unit\_Price} \times \left(1 - \frac{\text{Discount}}{100}\right)$$
-- **Strict Leakage Prevention**:
-  Time-series features must **never peek into future data**:
+- **Strict No-Leakage Lag Features**:
   - $\text{Lag}_1 = \text{shift}(1)$
   - $\text{Lag}_7 = \text{shift}(7)$
   - $\text{Lag}_{30} = \text{shift}(30)$
   - $\text{Rolling\_Mean}_7 = \text{shift}(1).\text{rolling}(7).\text{mean}()$
   - $\text{Rolling\_Mean}_{30} = \text{shift}(1).\text{rolling}(30).\text{mean}()$
-  By shifting 1 step before computing rolling statistics, the current day's target is never leaked into input features!
 
-### Module 5 & 6 — Demand Forecasting & Empirical Model Evaluation (`src/forecasting.py`, `src/evaluation.py`)
-- **Chronological Time-Series Split**:
-  Data is split temporally at the 80% date threshold (no random shuffle):
-  - Training Period: `2024-01-01` to `2025-12-29` (36,442 observations)
-  - Testing/Evaluation Period: `2025-12-30` to `2026-06-30` (9,148 observations)
-- **Model Evaluation Leaderboard** (Saved to `reports/model_comparison.csv`):
+### Module 5 & 6 — Demand Forecasting & Model Evaluation
 
-| Model Name | MAE (Units) | RMSE (Units) | MAPE (%) | Validation Rank |
+| Model Name | MAE | RMSE | MAPE (%) | Rank |
 | :--- | :---: | :---: | :---: | :---: |
-| **XGBoost Regressor** | **7.95** | **11.53** | **10.72%** | **Winner (Rank 1)** |
-| Random Forest Regressor | 8.51 | 12.58 | 11.40% | Rank 2 |
-| Linear Regression | 10.35 | 14.24 | 15.77% | Rank 3 |
-| Moving Average (7-Day Baseline) | 17.54 | 25.60 | 22.87% | Rank 4 |
-| Naive Forecast (Lag-1 Baseline) | 21.17 | 32.29 | 27.21% | Rank 5 |
+| **XGBoost Regressor** | **7.95** | **11.53** | **10.72%** | **🥇 Winner** |
+| Random Forest Regressor | 8.51 | 12.58 | 11.40% | 🥈 2 |
+| Linear Regression | 10.35 | 14.24 | 15.77% | 🥉 3 |
+| Moving Average (7-Day) | 17.54 | 25.60 | 22.87% | 4 |
+| Naive Forecast (Lag-1) | 21.17 | 32.29 | 27.21% | 5 |
 
-- **Why XGBoost Won**:
-  Gradient Boosted Decision Trees excelled at learning non-linear multi-feature interactions between store geographic multipliers, promotion discounts, holiday flags, and recent demand moving averages, reducing Mean Absolute Error to under 8 units with no lookahead bias.
+### Module 8 & 9 — Inventory Optimization (`src/inventory.py`)
 
-### Module 7, 8 & 9 — Inventory Optimization & Risk Detection (`src/inventory.py`)
-- **Safety Stock**:
-  $$\text{Safety Stock} = \max(5, \text{Forecast Demand} \times \text{Safety Stock Ratio})$$
-- **Lead Time Demand & Required Stock**:
-  $$\text{Required Stock} = (\text{Forecast Demand} \times \text{Lead Time}) + \text{Safety Stock}$$
-- **Economic Reorder Quantity**:
-  $$\text{Reorder Quantity} = \max(\text{Required Stock} - \text{Current Inventory}, 0)$$
-- **Risk Engine Classification**:
-  - `Stock-Out Risk`: If $\text{Current Inventory} < (\text{Forecast Demand} \times 0.75)$ or $\text{Current Inventory} < \text{Safety Stock}$.
-  - `Overstock Risk`: If $\text{Current Inventory} > (\text{Required Stock} \times 2.0)$.
-  - `Normal Stock`: When stock sits comfortably within safe operating limits.
+$$\text{Safety Stock} = \max(5,\ \text{Forecast Demand} \times 0.20)$$
+$$\text{Required Stock} = (\text{Forecast Demand} \times \text{Lead Time}) + \text{Safety Stock}$$
+$$\text{Reorder Quantity} = \max(\text{Required Stock} - \text{Current Inventory},\ 0)$$
 
-### Module 10, 11 & 12 — FastAPI, PostgreSQL & Model Integration (`api/`, `database/`)
-- Relational schema defined with SQLAlchemy ORM across 5 tables (`products`, `sales`, `inventory`, `forecasts`, `inventory_risk`).
-- Resilient database engine: automatically connects to PostgreSQL, with graceful SQLite fallback for zero-configuration local developer execution.
-- Restful endpoints with Pydantic v2 schemas:
-  - `GET /health`: System, model, and database heartbeat.
-  - `GET /sales`: Paginated historical sales transactions.
-  - `POST /sales`: Ingest new sale record, calculate revenue, and store in DB.
-  - `GET /inventory`: Active stock positions by store and product.
-  - `POST /forecast`: Generate real-time ML demand forecast and audit in DB.
-  - `GET /forecast/{product_id}`: Retrieve latest forecasts or auto-generate on-demand.
-  - `GET /inventory-risk/{product_id}`: Risk evaluation & reorder recommendation.
-  - `POST /reorder`: Replenish inventory stock and persist update.
+### Module 10, 11 & 12 — FastAPI + MySQL + REST API
 
-### Module 14 — Automated Testing (`tests/`)
-- **22 out of 22 Pytest tests passing (100% test pass rate)** covering data loading, cleaning, feature engineering, non-lookahead assertions, chronological splitting, safety stock calculations, risk classification, and API routes.
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | System, DB & model heartbeat |
+| `/products` | GET | Full product catalog (50 items) |
+| `/products/{id}` | GET | Single product by ID |
+| `/sales` | GET | Paginated historical sales |
+| `/sales` | POST | Record new sale transaction |
+| `/inventory` | GET | Current stock levels by store |
+| `/forecast` | POST | Generate ML demand forecast |
+| `/forecast/{product_id}` | GET | Forecast history for a product |
+| `/inventory-risk/{product_id}` | GET | Risk evaluation & reorder advice |
+| `/reorder` | POST | Replenish inventory stock |
+
+### Module 14 — Testing (`tests/`)
+- **25 / 25 Pytest tests PASSING** — covers API, data, forecasting, and inventory modules.
 
 ### Module 15 — Containerization (`Dockerfile`, `docker-compose.yml`)
-- Multi-container architecture orchestrating the FastAPI application and PostgreSQL 16 database with health checks and persistent volume storage.
+- MySQL 8.0 + FastAPI multi-container Docker stack.
 
 ---
 
-## 🚀 Quickstart & Installation Guide
+## 📡 Sample API Responses
 
-### Prerequisites
-- Python 3.12+ installed
-- Git installed
-- (Optional) Docker & Docker Compose installed
-
-### 1. Clone & Set Up Virtual Environment
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/Sales_Demand_Forecasting.git
-cd Sales_Demand_Forecasting
-
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# Windows:
-venv\Scripts\activate
-# Linux/macOS:
-source venv/bin/activate
-
-# Upgrade pip and install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 2. Configure Environment Variables
-
-```bash
-# Copy template configuration
-cp .env.example .env
-```
-
-The default `.env` is pre-configured with local credentials and automatic SQLite fallback if PostgreSQL is not running locally.
-
----
-
-## 🏃 Execution Instructions
-
-### Step 1: Ingest, Clean, and Run EDA
-```bash
-# 1. Generate realistic sales dataset (if starting fresh)
-python src/generate_dataset.py
-
-# 2. Run data hygiene pipeline
-python src/data_cleaning.py
-
-# 3. Generate exploratory charts into reports/figures/
-python src/eda.py
-```
-
-### Step 2: Train Models, Evaluate Leaderboard & Serialize Artifacts
-```bash
-# Trains 5 models, outputs comparison table and saves models/demand_model.pkl
-python src/evaluation.py
-```
-
-### Step 3: Run Full Pytest Test Suite
-```bash
-python -m pytest -v
-```
-Output:
-```text
-======================= 22 passed in ~25s =======================
-```
-
-### Step 4: Launch the FastAPI Application
-```bash
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-```
-The interactive Swagger API documentation is available at: **`http://localhost:8000/docs`**
-
----
-
-## 🐳 Running with Docker & Docker Compose
-
-To run the complete stack (FastAPI Application + PostgreSQL Database Container) with a single command:
-
-```bash
-docker compose up --build
-```
-
-- **FastAPI Endpoint**: `http://localhost:8000`
-- **Swagger Documentation**: `http://localhost:8000/docs`
-- **PostgreSQL Database Port**: `5432`
-
-To shut down:
-```bash
-docker compose down -v
-```
-
----
-
-## 📡 API Usage & Sample Requests / Responses
-
-### 1. Health Check
-**Request:**
-```bash
-curl -X GET "http://localhost:8000/health"
-```
-**Response (200 OK):**
+### GET /health
 ```json
 {
   "status": "ok",
   "database_status": "connected",
   "active_model": "XGBoost Regressor",
-  "timestamp": "2026-10-01T09:10:00Z"
+  "timestamp": "2026-10-05T16:00:00Z"
 }
 ```
 
----
-
-### 2. Generate Demand Forecast (`POST /forecast`)
-**Request:**
-```bash
-curl -X POST "http://localhost:8000/forecast" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "product_id": "P102",
-       "store_id": "S01",
-       "forecast_date": "2026-10-05",
-       "unit_price": 85.0,
-       "discount": 15.0,
-       "promotion": 1,
-       "holiday": 0,
-       "lag_1": 52.0,
-       "rolling_mean_7": 58.5
-     }'
-```
-**Response (200 OK):**
+### POST /forecast
 ```json
 {
   "product_id": "P102",
   "store_id": "S01",
-  "forecast_date": "2026-10-05",
-  "predicted_demand": 92,
+  "forecast_date": "2026-11-01",
+  "predicted_demand": 64,
   "model_used": "XGBoost Regressor",
   "confidence_interval": "± 12 units (95% CI based on validation MAE)"
 }
 ```
 
----
-
-### 3. Evaluate Inventory Risk (`GET /inventory-risk/{product_id}`)
-**Request:**
-```bash
-curl -X GET "http://localhost:8000/inventory-risk/P101?store_id=S01&lead_time_days=2"
-```
-**Response (200 OK):**
+### GET /inventory-risk/P101
 ```json
 {
   "product_id": "P101",
@@ -358,25 +615,11 @@ curl -X GET "http://localhost:8000/inventory-risk/P101?store_id=S01&lead_time_da
   "required_stock": 171.6,
   "reorder_quantity": 142,
   "risk_level": "Stock-Out Risk",
-  "recommendation": "High stock-out hazard! Current stock (30) is insufficient for anticipated demand (78). Urgent reorder of 142 units advised."
+  "recommendation": "High stock-out hazard! Urgent reorder of 142 units advised."
 }
 ```
 
----
-
-### 4. Execute Purchase Reorder (`POST /reorder`)
-**Request:**
-```bash
-curl -X POST "http://localhost:8000/reorder" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "product_id": "P101",
-       "store_id": "S01",
-       "reorder_quantity": 142,
-       "supplier_notes": "Urgent stock-out prevention order"
-     }'
-```
-**Response (200 OK):**
+### POST /reorder
 ```json
 {
   "product_id": "P101",
@@ -391,44 +634,27 @@ curl -X POST "http://localhost:8000/reorder" \
 
 ---
 
-## 🗄️ PostgreSQL Database Setup
+## 🎓 Technical Interview Highlights
 
-### Direct PostgreSQL Setup
-1. Log into your PostgreSQL instance via `psql` or pgAdmin:
-   ```bash
-   psql -U postgres
-   ```
-2. Create the project database:
-   ```sql
-   CREATE DATABASE sales_forecast;
-   ```
-3. Run the DDL schema migration script:
-   ```bash
-   psql -U postgres -d sales_forecast -f sql/schema.sql
-   ```
-4. Update `DATABASE_URL` in your `.env` file:
-   ```env
-   DATABASE_URL=postgresql://postgres:your_password@localhost:5432/sales_forecast
-   ```
-5. Run analytical queries from `sql/analysis.sql` to generate executive reports.
+1. **Why Chronological Split instead of Random Shuffle?**
+   > *"In time-series demand forecasting, random shuffling causes temporal lookahead leakage because future demand signals bleed into training sets. A strictly chronological split (past 80% for training, future 20% for testing) mirrors real-world production forecasting."*
+
+2. **How was Feature Leakage Prevented?**
+   > *"Features like `Rolling_Mean_7` are computed using `shift(1).rolling(7).mean()`. Shifting by 1 before computing the window ensures the current day's target is never included in input features."*
+
+3. **How does ML Connect to Financial ROI?**
+   > *"Rather than stopping at MAE/RMSE, this system translates demand predictions into inventory decisions — factoring in lead times and safety stock to identify stock-out and overstock hazards in real-time and recommend exact reorder quantities."*
+
+4. **Production Readiness:**
+   > *"Complete separation of concerns: modular feature store, Scikit-learn pipelines fitted strictly on training data, Pydantic v2 schemas, persistent DB audits, 25 Pytest tests passing, and multi-container Docker deployment."*
 
 ---
 
-## 🎓 Technical Interview Highlights & Portfolio Talking Points
+## 🔗 GitHub Repository
 
-When presenting this project in a Data Science or Machine Learning Engineering interview, emphasize these architectural design decisions:
-
-1. **Why Chronological Split instead of K-Fold or Random Shuffle?**
-   > *"In time-series demand forecasting, random shuffling causes catastrophic temporal lookahead leakage because future demand signals bleed into training sets. By using a strictly chronological split (past ~80% for training, future ~20% for testing), our evaluation mirrors real-world production forecasting."*
-
-2. **How was Feature Leakage Prevented in Historical Lags?**
-   > *"Features like `Rolling_Mean_7` are computed using `shift(1).rolling(7).mean()`. Shifting by 1 prior to computing the window ensures that the target sales for the current observation are never included in the rolling input feature vector."*
-
-3. **How does Machine Learning Connect Directly to Financial ROI?**
-   > *"Rather than stopping at model metrics (MAE/RMSE), this system translates demand predictions directly into inventory decisions. By mathematically factoring in supplier lead times and safety stock buffers, the system identifies stock-out and overstock hazards in real-time and recommends exact reorder quantities, directly optimizing inventory holding costs and preventing lost sales."*
-
-4. **Production Readiness & Resilience:**
-   > *"The application is architected with complete separation of concerns: modular feature store, Scikit-learn pipelines with One-Hot Encoders fitted strictly on training data, Pydantic v2 schemas for strict contract validation, persistent database audits, 100% Pytest test coverage, and multi-container Docker deployment."*
+```
+https://github.com/hemanthmikkie/Sales_Forecast
+```
 
 ---
 
